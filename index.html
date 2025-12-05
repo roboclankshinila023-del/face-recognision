@@ -1,42 +1,134 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <title>Face + Uniform Recognition</title>
+    <meta charset="UTF-8">
+    <title>Face Recognition – Vaishnavi</title>
 
-    <script defer src="https://unpkg.com/face-api.js"></script>
-    <script defer src="script.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/face-api.js"></script>
 
     <style>
         body {
-            font-family: Arial;
-            margin: 20px;
+            margin: 0;
+            background: #f2f8ff;
+            font-family: Arial, sans-serif;
+            text-align: center;
         }
+
+        h1 {
+            background: #0066ff;
+            color: white;
+            padding: 15px;
+            margin: 0;
+        }
+
         #video {
-            width: 500px;
-            border: 2px solid #000;
+            margin-top: 20px;
+            border-radius: 12px;
+            box-shadow: 0px 0px 15px rgba(0,0,0,0.2);
+        }
+
+        .btn {
+            background: #0099ff;
+            padding: 12px 22px;
             border-radius: 10px;
+            color: white;
+            cursor: pointer;
+            border: none;
+            font-size: 18px;
+            margin-top: 20px;
         }
-        #overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
+
+        .btn:hover {
+            background: #0077cc;
         }
-        .container {
-            position: relative;
-            width: fit-content;
+
+        #info-box {
+            margin-top: 20px;
+            font-size: 20px;
+            color: #333;
+            font-weight: bold;
         }
+
     </style>
 </head>
 
 <body>
+<h1>School Uniform Face Recognition</h1>
 
-<h2>Face + Uniform Recognition</h2>
+<video id="video" width="600" height="450" autoplay muted></video>
 
-<div class="container">
-    <video id="video" autoplay muted></video>
-    <canvas id="overlay"></canvas>
-</div>
+<br>
+<button class="btn" onclick="startRecognition()">Recognise Face</button>
+
+<div id="info-box"></div>
+
+<script>
+
+async function startCamera() {
+    const video = document.getElementById("video");
+    const stream = await navigator.mediaDevices.getUserMedia({ video: {} });
+    video.srcObject = stream;
+}
+
+async function loadModels() {
+    await faceapi.nets.tinyFaceDetector.loadFromUri("models/");
+    await faceapi.nets.faceRecognitionNet.loadFromUri("models/");
+    await faceapi.nets.faceLandmark68Net.loadFromUri("models/");
+}
+
+async function loadReferenceFace() {
+    const img = await faceapi.fetchImage("faces/vaishnavi.jpg");
+    const detection = await faceapi
+        .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+
+    return new faceapi.LabeledFaceDescriptors("Vaishnavi", [detection.descriptor]);
+}
+
+async function startRecognition() {
+    document.getElementById("info-box").innerText = "Processing...";
+
+    const faceMatcher = new faceapi.FaceMatcher(await loadReferenceFace(), 0.45);
+    const video = document.getElementById("video");
+
+    const canvas = faceapi.createCanvasFromMedia(video);
+    document.body.append(canvas);
+
+    const displaySize = { width: video.width, height: video.height };
+    faceapi.matchDimensions(canvas, displaySize);
+
+    const detect = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+
+    if (!detect) {
+        document.getElementById("info-box").innerText = "❌ No face detected";
+        return;
+    }
+
+    const bestMatch = faceMatcher.findBestMatch(detect.descriptor);
+
+    const resized = faceapi.resizeResults(detect, displaySize);
+
+    // Draw green box
+    faceapi.draw.drawDetections(canvas, resized);
+
+    // Name & uniform check
+    if (bestMatch.label === "Vaishnavi") {
+
+        document.getElementById("info-box").innerHTML =
+            "✅ Name: Vaishnavi<br>👗 Uniform: OK";
+
+    } else {
+        document.getElementById("info-box").innerHTML =
+            "❌ Face not recognised";
+    }
+}
+
+loadModels().then(startCamera);
+
+</script>
 
 </body>
 </html>
