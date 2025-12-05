@@ -34,9 +34,10 @@
     footer { margin-top:12px; color:var(--muted); font-size:13px; }
     .grid-row { display:flex; gap:8px; align-items:center; margin-top:8px; }
     .kbd { background:#1111; padding:4px 8px; border-radius:6px; font-size:13px; }
+    pre#log { margin:0; white-space:pre-wrap; font-size:12px; color:var(--muted); }
   </style>
 
-  <!-- face-api.js CDN -->
+  <!-- face-api.js (model weights loaded from public CDN) -->
   <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 </head>
 <body data-theme="light">
@@ -44,7 +45,7 @@
     <header>
       <div>
         <h1>Uniform Detection — Live Browser</h1>
-        <div class="muted small">Face recognition + heuristic uniform checks (blue T-shirt, white tie, dark pants, black shoes, badge)</div>
+        <div class="muted small">Recognizes faces you add and checks uniform (dark-blue shirt, white tie, dark pants, black shoes, badge).</div>
       </div>
       <div class="controls">
         <button id="themeToggle" class="kbd">Dark</button>
@@ -62,7 +63,7 @@
             <button id="recognizeBtn">Recognize (Face → Uniform)</button>
             <button id="addFaceBtn">Add Face</button>
             <input id="fileInput" type="file" accept="image/*">
-            <div class="muted small">Upload clear frontal photo (e.g. suryan.jpg), then enter a name</div>
+            <div class="muted small">Upload a clear frontal photo (e.g. Vaishnavi.jpg), then give the name.</div>
           </div>
 
           <div id="result" style="margin-top:10px"></div>
@@ -88,11 +89,11 @@
       </aside>
     </main>
 
-    <footer class="muted">Notes: Known faces are saved in your browser (localStorage). This uniform check uses heuristics; for higher accuracy use a trained model.</footer>
+    <footer class="muted">Notes: Known faces are saved in your browser (localStorage). Uniform check uses heuristics tuned for your school's uniform.</footer>
   </div>
 
 <script>
-/* ---------- Configuration and state ---------- */
+/* ---------- Config & state ---------- */
 const MODEL_ROOT = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights'
 let stream = null;
 let video = document.getElementById('video');
@@ -108,22 +109,22 @@ const openCameraBtn = document.getElementById('openCamera');
 const stopCameraBtn = document.getElementById('stopCamera');
 const themeToggle = document.getElementById('themeToggle');
 
-let descriptors = []; // {name, descriptor: Float32Array}
+let descriptors = []; // {name, descriptor}
 
 /* ---------- Helpers ---------- */
 function log(txt){ logEl.textContent = `[${new Date().toLocaleTimeString()}] ${txt}\n` + logEl.textContent; }
 function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
-/* ---------- Theme toggle ---------- */
+/* ---------- Theme ---------- */
 themeToggle.onclick = ()=>{
   const cur = document.body.getAttribute('data-theme');
   if(cur === 'light'){ document.body.setAttribute('data-theme','dark'); themeToggle.textContent='Light'; }
   else { document.body.setAttribute('data-theme','light'); themeToggle.textContent='Dark'; }
 }
 
-/* ---------- Load models ---------- */
+/* ---------- Load face-api models ---------- */
 async function loadModels(){
-  log('Loading face-api models (this may take a few seconds)...');
+  log('Loading face-api models from CDN...');
   await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_ROOT);
   await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_ROOT);
   await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_ROOT);
@@ -131,7 +132,7 @@ async function loadModels(){
 }
 loadModels().catch(e=>log('Model load failed: '+e));
 
-/* ---------- Camera controls ---------- */
+/* ---------- Camera ---------- */
 openCameraBtn.onclick = async ()=>{
   try{
     stream = await navigator.mediaDevices.getUserMedia({video:{width:640,height:480}, audio:false});
@@ -150,13 +151,13 @@ stopCameraBtn.onclick = ()=>{
   log('Camera stopped');
 }
 
-/* ---------- Persistence: save/load known faces ---------- */
+/* ---------- Persistence ---------- */
 function saveDescriptors(){
   try{
     const payload = descriptors.map(d=>({name:d.name, desc:Array.from(d.descriptor)}));
     localStorage.setItem('uniform_faces_v1', JSON.stringify(payload));
     renderFaces();
-    log('Saved ' + descriptors.length + ' face(s)');
+    log('Saved ' + descriptors.length + ' faces locally');
   }catch(e){ log('Save error: '+e); }
 }
 function loadDescriptors(){
@@ -166,7 +167,7 @@ function loadDescriptors(){
     const arr = JSON.parse(raw);
     descriptors = arr.map(a=>({name:a.name, descriptor:new Float32Array(a.desc)}));
     renderFaces();
-    log('Loaded ' + descriptors.length + ' face(s) from storage');
+    log('Loaded ' + descriptors.length + ' faces from storage');
   }catch(e){ log('Load error: '+e); }
 }
 function renderFaces(){
@@ -183,7 +184,7 @@ function renderFaces(){
 }
 loadDescriptors();
 
-/* ---------- Add face (upload file) ---------- */
+/* ---------- Add face via upload ---------- */
 addFaceBtn.onclick = ()=> fileInput.click();
 fileInput.onchange = async (ev) => {
   const f = ev.target.files[0]; if(!f) return;
@@ -204,14 +205,7 @@ fileInput.onchange = async (ev) => {
 /* ---------- Clear faces ---------- */
 clearFacesBtn.onclick = ()=>{ if(confirm('Clear all known faces?')){ descriptors=[]; saveDescriptors(); renderFaces(); log('Cleared faces'); } }
 
-/* ---------- Uniform heuristics ---------- */
-/* Heuristics tuned for:
-   - dark blue half-sleeve T-shirt (upper chest)
-   - white tie (center strip)
-   - dark blue pants (lower region)
-   - black shoes (very dark regions at bottom)
-   - badge: small bright patch on upper-left chest area
-*/
+/* ---------- Uniform heuristics (tuned to your uniform) ---------- */
 function rgbToHsv(r,g,b){
   r/=255; g/=255; b/=255;
   const mx = Math.max(r,g,b), mn = Math.min(r,g,b);
@@ -227,7 +221,6 @@ function rgbToHsv(r,g,b){
   const v = mx;
   return [h, s, v];
 }
-
 function meanDarkRatio(imageData, threshold){
   const data = imageData.data; let dark=0, total=0;
   for(let i=0;i<data.length;i+=4){
@@ -238,23 +231,18 @@ function meanDarkRatio(imageData, threshold){
   }
   return (total===0)?0:(dark/total);
 }
-
 function meanBlueRatio(imageData){
   const data = imageData.data; let count=0, blueCount=0;
   for(let i=0;i<data.length;i+=4){
     const r=data[i], g=data[i+1], b=data[i+2];
     const [h,s,v] = rgbToHsv(r,g,b);
-    // consider blue if hue between 180-260, saturation moderate, and not very bright
     if(h>=180 && h<=260 && s>0.25 && v<0.85) blueCount++;
     count++;
   }
   return (count===0)?0:(blueCount/count);
 }
-
 function detectBadge(imageData){
-  // badge heuristic: find any small region of very bright pixels concentrated (a badge shining)
   const data = imageData.data; const w = imageData.width, h = imageData.height;
-  // scan in small blocks
   const block = 12; let brightBlocks=0, totalBlocks=0;
   for(let by=0; by<h; by+=block){
     for(let bx=0; bx<w; bx+=block){
@@ -274,64 +262,51 @@ function detectBadge(imageData){
       }
     }
   }
-  // badge likely if there are at least 1-2 bright small blocks in the chest area
   return brightBlocks >= 1;
 }
 
 /* ---------- Recognition workflow ---------- */
 recognizeBtn.onclick = async ()=>{
   if(!video || !video.srcObject){ alert('Open camera first'); return; }
-  // snapshot canvas
   const c = document.createElement('canvas'); c.width = video.videoWidth || 640; c.height = video.videoHeight || 480;
   const ctx = c.getContext('2d'); ctx.drawImage(video, 0, 0, c.width, c.height);
   snapshotImg.src = c.toDataURL('image/jpeg', 0.9);
 
-  // face detection + descriptor
   const img = await faceapi.bufferToImage(await (await fetch(snapshotImg.src)).blob());
   const det = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
   if(!det){ resultDiv.innerHTML = '<div class="status-fail">No face detected</div>'; log('No face found'); return; }
   if(descriptors.length === 0){ resultDiv.innerHTML = '<div class="status-fail">No known faces — add face first</div>'; log('No known faces'); return; }
 
-  // match
   const labeled = descriptors.map(d => new faceapi.LabeledFaceDescriptors(d.name, [d.descriptor]));
   const matcher = new faceapi.FaceMatcher(labeled, 0.5);
   const best = matcher.findBestMatch(det.descriptor);
   const matchedName = best.label;
   log('Matched: ' + matchedName + ' (distance ' + best.distance.toFixed(2) + ')');
 
-  // Uniform heuristics:
-  // upper chest region
   const w = c.width, h = c.height;
   const uy = Math.floor(h * 0.18), ly = Math.floor(h * 0.55);
   const cx1 = Math.floor(w * 0.22), cx2 = Math.floor(w * 0.78);
   const upperW = cx2 - cx1, upperH = ly - uy;
   const upperData = ctx.getImageData(cx1, uy, upperW, upperH);
 
-  // center strip (tie)
   const stripW = Math.max(2, Math.floor(upperW * 0.12));
   const stripX = Math.floor(upperW/2 - stripW/2);
   const stripData = ctx.getImageData(cx1 + stripX, uy, stripW, upperH);
 
-  // lower (pants) region
   const ly2 = Math.floor(h * 0.62);
   const lowerH = Math.max(40, h - ly2);
   const lowerData = ctx.getImageData(cx1, ly2, upperW, lowerH);
 
-  // shoes area (bottom)
   const shoeY = Math.floor(h * 0.78);
   const shoeH = Math.max(30, h - shoeY);
   const shoeData = ctx.getImageData(cx1, shoeY, upperW, shoeH);
 
-  // badge candidate area: upper-left chest region (relative)
   const badgeW = Math.floor(upperW * 0.35);
   const badgeH = Math.floor(upperH * 0.35);
   const badgeData = ctx.getImageData(cx1, uy + Math.floor(upperH*0.1), badgeW, badgeH);
 
-  // compute metrics
-  const blueRatio = meanBlueRatio(upperData); // proportion of blue pixels in upper chest
-  const stripWhiteRatio = meanDarkRatio(stripData, 220); // how many pixels are darker than 220 -> we invert logic: low dark ratio means bright = white
+  const blueRatio = meanBlueRatio(upperData);
   const stripBrightRatio = (() => {
-    // compute proportion of bright & low saturation pixels
     const data = stripData.data; let bright=0, total=0;
     for(let i=0;i<data.length;i+=4){
       const r=data[i], g=data[i+1], b=data[i+2];
@@ -347,16 +322,14 @@ recognizeBtn.onclick = async ()=>{
   const shoesDarkRatio = meanDarkRatio(shoeData, 60);
   const badgeFound = detectBadge(badgeData);
 
-  // decide PASS/FAIL using thresholds tuned for your uniform description
-  const tieDetected = stripBrightRatio > 0.25; // center white strip found
-  const shirtBlue = blueRatio > 0.25; // chest is blueish
+  const tieDetected = stripBrightRatio > 0.25;
+  const shirtBlue = blueRatio > 0.25;
   const pantsBlue = pantsBlueRatio > 0.20;
-  const shoesDetected = shoesDarkRatio > 0.04; // some dark blobs present
+  const shoesDetected = shoesDarkRatio > 0.04;
   const badgeDetected = badgeFound;
 
   const pass = (shirtBlue && tieDetected && pantsBlue && shoesDetected && badgeDetected);
 
-  // Prepare friendly result
   const details = {
     shirtBlue: shirtBlue,
     blueRatio: parseFloat(blueRatio.toFixed(3)),
@@ -369,16 +342,11 @@ recognizeBtn.onclick = async ()=>{
     badgeDetected: badgeDetected
   };
 
-  // show result
   const statusHtml = pass ? '<div class="status-pass">✔ UNIFORM PASS</div>' : '<div class="status-fail">✖ UNIFORM FAIL</div>';
-  resultDiv.innerHTML = `<div><strong>${matchedName}</strong></div>
-    ${statusHtml}
-    <div class="muted small">Details: ${JSON.stringify(details)}</div>`;
+  resultDiv.innerHTML = `<div><strong>${matchedName}</strong></div>${statusHtml}<div class="muted small">Details: ${JSON.stringify(details)}</div>`;
   if(pass) log('UNIFORM PASS for ' + matchedName);
   else log('UNIFORM FAIL for ' + matchedName + ' — details: ' + JSON.stringify(details));
 }
-
-/* ---------- Done ---------- */
 </script>
 </body>
 </html>
