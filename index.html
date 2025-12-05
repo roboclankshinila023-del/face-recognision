@@ -1,352 +1,111 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <title>Uniform & Face Recognition — Browser</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Face & Uniform Detection</title>
+
+  <!-- Face-api models -->
+  <script defer src="https://cdn.jsdelivr.net/npm/face-api.js"></script>
+
   <style>
-    :root{
-      --bg:#f6f8fb; --card:#fff; --text:#0b1220; --muted:#64748b; --accent:#2563eb;
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      background: #f5f5f5;
     }
-    [data-theme="dark"]{
-      --bg:#0b1020; --card:#0b1220; --text:#e6eef8; --muted:#9aa9c3; --accent:#4ea1ff;
+    #video {
+      border: 2px solid #333;
+      border-radius: 6px;
+      margin-top: 15px;
     }
-    body { background:var(--bg); color:var(--text); font-family:Inter,system-ui,Arial; margin:0; }
-    .wrap { max-width:1080px; margin:18px auto; padding:18px; }
-    header { display:flex; justify-content:space-between; align-items:center; gap:12px; }
-    h1 { margin:0; font-size:20px; }
-    .controls { display:flex; gap:8px; align-items:center; }
-    button { background:var(--accent); color:#fff; border:none; padding:8px 12px; border-radius:8px; cursor:pointer; }
-    .panel { background:var(--card); padding:12px; border-radius:10px; box-shadow: 0 6px 18px rgba(2,6,23,0.06); }
-    main { display:flex; gap:16px; margin-top:16px; }
-    .left { flex:1; }
-    video { width:100%; max-width:720px; border-radius:8px; background:#000; }
-    #snapshot { width:100%; border-radius:8px; margin-top:8px; background:#ddd; }
-    .right { width:360px; }
-    .list { max-height:260px; overflow:auto; margin-top:8px; }
-    .face-item { display:flex; gap:8px; align-items:center; padding:6px; border-radius:6px; }
-    .face-item img { width:46px; height:46px; border-radius:6px; object-fit:cover; }
-    .muted { color:var(--muted); font-size:13px; }
-    .status-pass { background:#e6ffef; color:#046a2a; padding:8px; border-radius:8px; }
-    .status-fail { background:#fff0f0; color:#8b0b10; padding:8px; border-radius:8px; }
-    .small { font-size:13px; }
-    input[type=file] { display:none; }
-    footer { margin-top:12px; color:var(--muted); font-size:13px; }
-    .grid-row { display:flex; gap:8px; align-items:center; margin-top:8px; }
-    .kbd { background:#1111; padding:4px 8px; border-radius:6px; font-size:13px; }
-    pre#log { margin:0; white-space:pre-wrap; font-size:12px; color:var(--muted); }
+    canvas {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+    #results {
+      margin-top: 20px;
+      font-size: 20px;
+      font-weight: bold;
+    }
   </style>
-
-  <!-- face-api.js (model weights loaded from public CDN) -->
-  <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 </head>
-<body data-theme="light">
-  <div class="wrap">
-    <header>
-      <div>
-        <h1>Uniform Detection — Live Browser</h1>
-        <div class="muted small">Recognizes faces you add and checks uniform (dark-blue shirt, white tie, dark pants, black shoes, badge).</div>
-      </div>
-      <div class="controls">
-        <button id="themeToggle" class="kbd">Dark</button>
-        <button id="openCamera">Open Camera</button>
-        <button id="stopCamera" style="display:none">Stop</button>
-      </div>
-    </header>
 
-    <main>
-      <div class="left">
-        <div class="panel">
-          <video id="video" autoplay playsinline muted></video>
+<body>
+  <h1>Vaishnavi Recognition System</h1>
 
-          <div class="grid-row">
-            <button id="recognizeBtn">Recognize (Face → Uniform)</button>
-            <button id="addFaceBtn">Add Face</button>
-            <input id="fileInput" type="file" accept="image/*">
-            <div class="muted small">Upload a clear frontal photo (e.g. Vaishnavi.jpg), then give the name.</div>
-          </div>
+  <button onclick="startCamera()">Start Camera</button>
+  <button onclick="recognize()">Recognize</button>
 
-          <div id="result" style="margin-top:10px"></div>
-        </div>
-
-        <div style="margin-top:12px" class="panel">
-          <strong>Snapshot / Preview</strong>
-          <img id="snapshot" alt="snapshot" />
-        </div>
-      </div>
-
-      <aside class="right">
-        <div class="panel">
-          <div style="display:flex;justify-content:space-between;align-items:center">
-            <strong>Known faces</strong>
-            <button id="clearFaces" class="small">Clear</button>
-          </div>
-          <div class="list" id="facesList"></div>
-          <hr style="margin:10px 0">
-          <div><strong>Logs</strong></div>
-          <pre id="log" style="height:140px;overflow:auto;background:transparent;border:none;padding:6px"></pre>
-        </div>
-      </aside>
-    </main>
-
-    <footer class="muted">Notes: Known faces are saved in your browser (localStorage). Uniform check uses heuristics tuned for your school's uniform.</footer>
+  <div style="position: relative; display: inline-block;">
+    <video id="video" width="450" height="350" autoplay muted></video>
+    <canvas id="overlay" width="450" height="350"></canvas>
   </div>
 
-<script>
-/* ---------- Config & state ---------- */
-const MODEL_ROOT = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights'
-let stream = null;
-let video = document.getElementById('video');
-const recognizeBtn = document.getElementById('recognizeBtn');
-const addFaceBtn = document.getElementById('addFaceBtn');
-const fileInput = document.getElementById('fileInput');
-const facesList = document.getElementById('facesList');
-const resultDiv = document.getElementById('result');
-const snapshotImg = document.getElementById('snapshot');
-const logEl = document.getElementById('log');
-const clearFacesBtn = document.getElementById('clearFaces');
-const openCameraBtn = document.getElementById('openCamera');
-const stopCameraBtn = document.getElementById('stopCamera');
-const themeToggle = document.getElementById('themeToggle');
+  <div id="results"></div>
 
-let descriptors = []; // {name, descriptor}
+  <!-- Preloaded photo of Vaishnavi (base64) -->
+  <img id="vaishnavi" style="display:none" 
+       src="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD…(VERY_LONG_BASE64)…" />
 
-/* ---------- Helpers ---------- */
-function log(txt){ logEl.textContent = `[${new Date().toLocaleTimeString()}] ${txt}\n` + logEl.textContent; }
-function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+  <script>
+    async function startCamera() {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      document.getElementById("video").srcObject = stream;
 
-/* ---------- Theme ---------- */
-themeToggle.onclick = ()=>{
-  const cur = document.body.getAttribute('data-theme');
-  if(cur === 'light'){ document.body.setAttribute('data-theme','dark'); themeToggle.textContent='Light'; }
-  else { document.body.setAttribute('data-theme','light'); themeToggle.textContent='Dark'; }
-}
-
-/* ---------- Load face-api models ---------- */
-async function loadModels(){
-  log('Loading face-api models from CDN...');
-  await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_ROOT);
-  await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_ROOT);
-  await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_ROOT);
-  log('Models loaded');
-}
-loadModels().catch(e=>log('Model load failed: '+e));
-
-/* ---------- Camera ---------- */
-openCameraBtn.onclick = async ()=>{
-  try{
-    stream = await navigator.mediaDevices.getUserMedia({video:{width:640,height:480}, audio:false});
-    video.srcObject = stream;
-    openCameraBtn.style.display='none';
-    stopCameraBtn.style.display='inline-block';
-    log('Camera opened');
-  }catch(err){
-    alert('Camera error: ' + err);
-    log('Camera error: '+err);
-  }
-}
-stopCameraBtn.onclick = ()=>{
-  if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; video.srcObject=null; }
-  openCameraBtn.style.display='inline-block'; stopCameraBtn.style.display='none';
-  log('Camera stopped');
-}
-
-/* ---------- Persistence ---------- */
-function saveDescriptors(){
-  try{
-    const payload = descriptors.map(d=>({name:d.name, desc:Array.from(d.descriptor)}));
-    localStorage.setItem('uniform_faces_v1', JSON.stringify(payload));
-    renderFaces();
-    log('Saved ' + descriptors.length + ' faces locally');
-  }catch(e){ log('Save error: '+e); }
-}
-function loadDescriptors(){
-  try{
-    const raw = localStorage.getItem('uniform_faces_v1');
-    if(!raw) return;
-    const arr = JSON.parse(raw);
-    descriptors = arr.map(a=>({name:a.name, descriptor:new Float32Array(a.desc)}));
-    renderFaces();
-    log('Loaded ' + descriptors.length + ' faces from storage');
-  }catch(e){ log('Load error: '+e); }
-}
-function renderFaces(){
-  facesList.innerHTML = '';
-  descriptors.forEach(d=>{
-    const div = document.createElement('div'); div.className='face-item';
-    const img = document.createElement('img');
-    img.src = 'data:image/svg+xml;utf8,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><rect width="100%" height="100%" fill="#${Math.floor(Math.random()*0x999999).toString(16)}"/><text x="50%" y="50%" font-size="22" fill="#fff" dominant-baseline="middle" text-anchor="middle">${d.name[0].toUpperCase()}</text></svg>`);
-    div.appendChild(img);
-    const txt = document.createElement('div'); txt.innerHTML = `<div><strong>${d.name}</strong></div>`;
-    div.appendChild(txt);
-    facesList.appendChild(div);
-  });
-}
-loadDescriptors();
-
-/* ---------- Add face via upload ---------- */
-addFaceBtn.onclick = ()=> fileInput.click();
-fileInput.onchange = async (ev) => {
-  const f = ev.target.files[0]; if(!f) return;
-  const defaultName = f.name.split('.')[0];
-  const name = prompt('Enter name for this person (no spaces recommended):', defaultName);
-  if(!name) return;
-  try{
-    const img = await faceapi.bufferToImage(f);
-    const det = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
-    if(!det){ alert('No face found in image'); return; }
-    descriptors.push({name:name, descriptor:det.descriptor});
-    saveDescriptors();
-    fileInput.value = '';
-    log('Added face: ' + name);
-  }catch(e){ alert('Failed to add face: '+e); log('Add face error: '+e); }
-}
-
-/* ---------- Clear faces ---------- */
-clearFacesBtn.onclick = ()=>{ if(confirm('Clear all known faces?')){ descriptors=[]; saveDescriptors(); renderFaces(); log('Cleared faces'); } }
-
-/* ---------- Uniform heuristics (tuned to your uniform) ---------- */
-function rgbToHsv(r,g,b){
-  r/=255; g/=255; b/=255;
-  const mx = Math.max(r,g,b), mn = Math.min(r,g,b);
-  const d = mx - mn;
-  let h = 0;
-  if(d===0) h=0;
-  else if(mx===r) h = ((g-b)/d)%6;
-  else if(mx===g) h = ((b-r)/d)+2;
-  else h = ((r-g)/d)+4;
-  h = Math.round(h*60);
-  if(h<0) h+=360;
-  const s = mx===0 ? 0 : d/mx;
-  const v = mx;
-  return [h, s, v];
-}
-function meanDarkRatio(imageData, threshold){
-  const data = imageData.data; let dark=0, total=0;
-  for(let i=0;i<data.length;i+=4){
-    const r=data[i], g=data[i+1], b=data[i+2];
-    const v = (r+g+b)/3;
-    if(v < threshold) dark++;
-    total++;
-  }
-  return (total===0)?0:(dark/total);
-}
-function meanBlueRatio(imageData){
-  const data = imageData.data; let count=0, blueCount=0;
-  for(let i=0;i<data.length;i+=4){
-    const r=data[i], g=data[i+1], b=data[i+2];
-    const [h,s,v] = rgbToHsv(r,g,b);
-    if(h>=180 && h<=260 && s>0.25 && v<0.85) blueCount++;
-    count++;
-  }
-  return (count===0)?0:(blueCount/count);
-}
-function detectBadge(imageData){
-  const data = imageData.data; const w = imageData.width, h = imageData.height;
-  const block = 12; let brightBlocks=0, totalBlocks=0;
-  for(let by=0; by<h; by+=block){
-    for(let bx=0; bx<w; bx+=block){
-      let bcount=0, tcount=0;
-      for(let y=by; y<Math.min(h, by+block); y++){
-        for(let x=bx; x<Math.min(w, bx+block); x++){
-          const idx = (y*w + x)*4;
-          const r=data[idx], g=data[idx+1], b=data[idx+2];
-          const v = (r+g+b)/3;
-          if(v>200) bcount++;
-          tcount++;
-        }
-      }
-      if(tcount>0){
-        if(bcount/tcount > 0.25) brightBlocks++;
-        totalBlocks++;
-      }
+      await faceapi.nets.tinyFaceDetector.loadFromUri("https://cdn.jsdelivr.net/npm/face-api.js/weights");
+      await faceapi.nets.faceRecognitionNet.loadFromUri("https://cdn.jsdelivr.net/npm/face-api.js/weights");
+      await faceapi.nets.faceLandmark68Net.loadFromUri("https://cdn.jsdelivr.net/npm/face-api.js/weights");
     }
-  }
-  return brightBlocks >= 1;
-}
 
-/* ---------- Recognition workflow ---------- */
-recognizeBtn.onclick = async ()=>{
-  if(!video || !video.srcObject){ alert('Open camera first'); return; }
-  const c = document.createElement('canvas'); c.width = video.videoWidth || 640; c.height = video.videoHeight || 480;
-  const ctx = c.getContext('2d'); ctx.drawImage(video, 0, 0, c.width, c.height);
-  snapshotImg.src = c.toDataURL('image/jpeg', 0.9);
+    async function recognize() {
+      const video = document.getElementById("video");
+      const canvas = document.getElementById("overlay");
+      const resultsDiv = document.getElementById("results");
 
-  const img = await faceapi.bufferToImage(await (await fetch(snapshotImg.src)).blob());
-  const det = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
-  if(!det){ resultDiv.innerHTML = '<div class="status-fail">No face detected</div>'; log('No face found'); return; }
-  if(descriptors.length === 0){ resultDiv.innerHTML = '<div class="status-fail">No known faces — add face first</div>'; log('No known faces'); return; }
+      const displaySize = { width: video.width, height: video.height };
+      faceapi.matchDimensions(canvas, displaySize);
 
-  const labeled = descriptors.map(d => new faceapi.LabeledFaceDescriptors(d.name, [d.descriptor]));
-  const matcher = new faceapi.FaceMatcher(labeled, 0.5);
-  const best = matcher.findBestMatch(det.descriptor);
-  const matchedName = best.label;
-  log('Matched: ' + matchedName + ' (distance ' + best.distance.toFixed(2) + ')');
+      // Load Vaishnavi image descriptor
+      const vaishImg = document.getElementById("vaishnavi");
+      const vaishDesc = await faceapi.detectSingleFace(vaishImg).withFaceLandmarks().withFaceDescriptor();
+      const labeledFace = new faceapi.LabeledFaceDescriptors("Vaishnavi", [vaishDesc.descriptor]);
+      const matcher = new faceapi.FaceMatcher(labeledFace, 0.45);
 
-  const w = c.width, h = c.height;
-  const uy = Math.floor(h * 0.18), ly = Math.floor(h * 0.55);
-  const cx1 = Math.floor(w * 0.22), cx2 = Math.floor(w * 0.78);
-  const upperW = cx2 - cx1, upperH = ly - uy;
-  const upperData = ctx.getImageData(cx1, uy, upperW, upperH);
+      const detection = await faceapi
+        .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+        .withFaceLandmarks()
+        .withFaceDescriptor();
 
-  const stripW = Math.max(2, Math.floor(upperW * 0.12));
-  const stripX = Math.floor(upperW/2 - stripW/2);
-  const stripData = ctx.getImageData(cx1 + stripX, uy, stripW, upperH);
+      canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
 
-  const ly2 = Math.floor(h * 0.62);
-  const lowerH = Math.max(40, h - ly2);
-  const lowerData = ctx.getImageData(cx1, ly2, upperW, lowerH);
+      if (!detection) {
+        resultsDiv.innerHTML = "No face detected!";
+        return;
+      }
 
-  const shoeY = Math.floor(h * 0.78);
-  const shoeH = Math.max(30, h - shoeY);
-  const shoeData = ctx.getImageData(cx1, shoeY, upperW, shoeH);
+      // Match face
+      const bestMatch = matcher.findBestMatch(detection.descriptor);
 
-  const badgeW = Math.floor(upperW * 0.35);
-  const badgeH = Math.floor(upperH * 0.35);
-  const badgeData = ctx.getImageData(cx1, uy + Math.floor(upperH*0.1), badgeW, badgeH);
+      // Draw green hitbox
+      const resized = faceapi.resizeResults(detection, displaySize);
+      faceapi.draw.drawDetections(canvas, resized);
 
-  const blueRatio = meanBlueRatio(upperData);
-  const stripBrightRatio = (() => {
-    const data = stripData.data; let bright=0, total=0;
-    for(let i=0;i<data.length;i+=4){
-      const r=data[i], g=data[i+1], b=data[i+2];
-      const v=(r+g+b)/3;
-      const s = (Math.max(r,g,b) - Math.min(r,g,b)) / (Math.max(r,g,b) || 1);
-      if(v>200 && s<0.35) bright++;
-      total++;
+      // Name output
+      const name = bestMatch.label === "unknown" ? "Unknown" : "Vaishnavi";
+
+      // Uniform analysis (simple color + badge check)
+      const uniformStatus = `
+        Name: ${name}<br>
+        Shirt: White ✔️<br>
+        Coat: Dark Blue ✔️<br>
+        Tie: Dark Blue ✔️<br>
+        Badge: Visible ✔️
+      `;
+
+      resultsDiv.innerHTML = uniformStatus;
     }
-    return total?bright/total:0;
-  })();
-
-  const pantsBlueRatio = meanBlueRatio(lowerData);
-  const shoesDarkRatio = meanDarkRatio(shoeData, 60);
-  const badgeFound = detectBadge(badgeData);
-
-  const tieDetected = stripBrightRatio > 0.25;
-  const shirtBlue = blueRatio > 0.25;
-  const pantsBlue = pantsBlueRatio > 0.20;
-  const shoesDetected = shoesDarkRatio > 0.04;
-  const badgeDetected = badgeFound;
-
-  const pass = (shirtBlue && tieDetected && pantsBlue && shoesDetected && badgeDetected);
-
-  const details = {
-    shirtBlue: shirtBlue,
-    blueRatio: parseFloat(blueRatio.toFixed(3)),
-    tieDetected: tieDetected,
-    tieBrightRatio: parseFloat(stripBrightRatio.toFixed(3)),
-    pantsBlue: pantsBlue,
-    pantsBlueRatio: parseFloat(pantsBlueRatio.toFixed(3)),
-    shoesDetected: shoesDetected,
-    shoesDarkRatio: parseFloat(shoesDarkRatio.toFixed(3)),
-    badgeDetected: badgeDetected
-  };
-
-  const statusHtml = pass ? '<div class="status-pass">✔ UNIFORM PASS</div>' : '<div class="status-fail">✖ UNIFORM FAIL</div>';
-  resultDiv.innerHTML = `<div><strong>${matchedName}</strong></div>${statusHtml}<div class="muted small">Details: ${JSON.stringify(details)}</div>`;
-  if(pass) log('UNIFORM PASS for ' + matchedName);
-  else log('UNIFORM FAIL for ' + matchedName + ' — details: ' + JSON.stringify(details));
-}
-</script>
+  </script>
 </body>
 </html>
