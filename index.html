@@ -1,111 +1,42 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Face & Uniform Detection</title>
+    <meta charset="UTF-8" />
+    <title>Face + Uniform Recognition</title>
 
-  <!-- Face-api models -->
-  <script defer src="https://cdn.jsdelivr.net/npm/face-api.js"></script>
+    <script defer src="https://unpkg.com/face-api.js"></script>
+    <script defer src="script.js"></script>
 
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      text-align: center;
-      background: #f5f5f5;
-    }
-    #video {
-      border: 2px solid #333;
-      border-radius: 6px;
-      margin-top: 15px;
-    }
-    canvas {
-      position: absolute;
-      left: 50%;
-      transform: translateX(-50%);
-    }
-    #results {
-      margin-top: 20px;
-      font-size: 20px;
-      font-weight: bold;
-    }
-  </style>
+    <style>
+        body {
+            font-family: Arial;
+            margin: 20px;
+        }
+        #video {
+            width: 500px;
+            border: 2px solid #000;
+            border-radius: 10px;
+        }
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        .container {
+            position: relative;
+            width: fit-content;
+        }
+    </style>
 </head>
 
 <body>
-  <h1>Vaishnavi Recognition System</h1>
 
-  <button onclick="startCamera()">Start Camera</button>
-  <button onclick="recognize()">Recognize</button>
+<h2>Face + Uniform Recognition</h2>
 
-  <div style="position: relative; display: inline-block;">
-    <video id="video" width="450" height="350" autoplay muted></video>
-    <canvas id="overlay" width="450" height="350"></canvas>
-  </div>
+<div class="container">
+    <video id="video" autoplay muted></video>
+    <canvas id="overlay"></canvas>
+</div>
 
-  <div id="results"></div>
-
-  <!-- Preloaded photo of Vaishnavi (base64) -->
-  <img id="vaishnavi" style="display:none" 
-       src="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD…(VERY_LONG_BASE64)…" />
-
-  <script>
-    async function startCamera() {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      document.getElementById("video").srcObject = stream;
-
-      await faceapi.nets.tinyFaceDetector.loadFromUri("https://cdn.jsdelivr.net/npm/face-api.js/weights");
-      await faceapi.nets.faceRecognitionNet.loadFromUri("https://cdn.jsdelivr.net/npm/face-api.js/weights");
-      await faceapi.nets.faceLandmark68Net.loadFromUri("https://cdn.jsdelivr.net/npm/face-api.js/weights");
-    }
-
-    async function recognize() {
-      const video = document.getElementById("video");
-      const canvas = document.getElementById("overlay");
-      const resultsDiv = document.getElementById("results");
-
-      const displaySize = { width: video.width, height: video.height };
-      faceapi.matchDimensions(canvas, displaySize);
-
-      // Load Vaishnavi image descriptor
-      const vaishImg = document.getElementById("vaishnavi");
-      const vaishDesc = await faceapi.detectSingleFace(vaishImg).withFaceLandmarks().withFaceDescriptor();
-      const labeledFace = new faceapi.LabeledFaceDescriptors("Vaishnavi", [vaishDesc.descriptor]);
-      const matcher = new faceapi.FaceMatcher(labeledFace, 0.45);
-
-      const detection = await faceapi
-        .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
-        .withFaceLandmarks()
-        .withFaceDescriptor();
-
-      canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
-
-      if (!detection) {
-        resultsDiv.innerHTML = "No face detected!";
-        return;
-      }
-
-      // Match face
-      const bestMatch = matcher.findBestMatch(detection.descriptor);
-
-      // Draw green hitbox
-      const resized = faceapi.resizeResults(detection, displaySize);
-      faceapi.draw.drawDetections(canvas, resized);
-
-      // Name output
-      const name = bestMatch.label === "unknown" ? "Unknown" : "Vaishnavi";
-
-      // Uniform analysis (simple color + badge check)
-      const uniformStatus = `
-        Name: ${name}<br>
-        Shirt: White ✔️<br>
-        Coat: Dark Blue ✔️<br>
-        Tie: Dark Blue ✔️<br>
-        Badge: Visible ✔️
-      `;
-
-      resultsDiv.innerHTML = uniformStatus;
-    }
-  </script>
 </body>
 </html>
