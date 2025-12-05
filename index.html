@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Camera Face + Uniform Detector</title>
+</head>
+<body>
+  <h2>Camera Detector</h2>
+
+  <video id="cam" autoplay playsinline width="300"></video>
+  <button id="snap">Scan</button>
+  <pre id="out"></pre>
+
+  <script>
+    const video = document.getElementById('cam');
+    const output = document.getElementById('out');
+
+    async function initCam() {
+      let stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      video.srcObject = stream;
+    }
+    initCam();
+
+    document.getElementById('snap').onclick = async () => {
+      let canvas = document.createElement('canvas');
+      canvas.width = 300;
+      canvas.height = 300;
+      canvas.getContext('2d').drawImage(video, 0, 0, 300, 300);
+      let dataUrl = canvas.toDataURL("image/jpeg");
+
+      let res = await fetch("YOUR_BACKEND_URL/recognize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: dataUrl })
+      });
+
+      output.textContent = JSON.stringify(await res.json(), null, 2);
+    };
+  </script>
+</body>
+</html>
